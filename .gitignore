@@ -1,0 +1,9 @@
+@"
+.env
+target/
+frontend/
+debug.log
+*.log
+.idea/
+.vscode/
+"@ | Set-Content -Encoding UTF8 .gitignore

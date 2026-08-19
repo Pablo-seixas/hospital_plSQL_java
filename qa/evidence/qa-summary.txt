@@ -1,0 +1,35 @@
+﻿
+
+Name  : project
+Value : HospitalCore Management
+
+Name  : startedAt
+Value : 2026-08-19T13:53:21.6383820-03:00
+
+Name  : finishedAt
+Value : 2026-08-19T13:53:27.6561027-03:00
+
+Name  : java
+Value : PASS_EXISTING_SUREFIRE_EVIDENCE
+
+Name  : javaTestsVerified
+Value : 4
+
+Name  : javaFailuresVerified
+Value : 0
+
+Name  : codeComments
+Value : PASS
+
+Name  : probableSecrets
+Value : PASS
+
+Name  : frontend
+Value : BLOCKED_DEPENDENCIES
+
+Name  : oracle
+Value : BLOCKED_NO_DATABASE
+
+
+
+

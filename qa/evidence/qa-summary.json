@@ -1,0 +1,12 @@
+﻿{
+    "project":  "HospitalCore Management",
+    "startedAt":  "2026-08-19T13:53:21.6383820-03:00",
+    "finishedAt":  "2026-08-19T13:53:27.6561027-03:00",
+    "java":  "PASS_EXISTING_SUREFIRE_EVIDENCE",
+    "javaTestsVerified":  4,
+    "javaFailuresVerified":  0,
+    "codeComments":  "PASS",
+    "probableSecrets":  "PASS",
+    "frontend":  "BLOCKED_DEPENDENCIES",
+    "oracle":  "BLOCKED_NO_DATABASE"
+}
