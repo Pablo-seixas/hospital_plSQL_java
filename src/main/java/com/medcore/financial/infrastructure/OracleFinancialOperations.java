@@ -1,6 +1,7 @@
 package com.medcore.financial.infrastructure;
 
 import com.medcore.financial.application.SettleTitleCommand;
+import com.medcore.financial.application.FinancialCommandHandler;
 import com.medcore.shared.infrastructure.OracleErrorTranslator;
 import java.sql.Types;
 import java.util.Map;
@@ -11,7 +12,7 @@ import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class OracleFinancialOperations {
+public class OracleFinancialOperations implements FinancialCommandHandler {
     private final SimpleJdbcCall settleTitle;
     private final OracleErrorTranslator translator;
 
@@ -25,6 +26,7 @@ public class OracleFinancialOperations {
                         new SqlParameter("P_ACTOR", Types.VARCHAR), new SqlParameter("P_CORRELATION_ID", Types.VARCHAR));
     }
 
+    @Override
     public void settle(long titleId, SettleTitleCommand command, String actor) {
         try {
             settleTitle.execute(Map.of("P_TITLE_ID", titleId, "P_IDEMPOTENCY_KEY", command.idempotencyKey(),
@@ -35,4 +37,3 @@ public class OracleFinancialOperations {
         }
     }
 }
-

@@ -1,9 +1,9 @@
 ﻿{
     "project":  "HospitalCore Management",
-    "startedAt":  "2026-08-19T13:53:21.6383820-03:00",
-    "finishedAt":  "2026-08-19T13:53:27.6561027-03:00",
+    "startedAt":  "2026-08-22T14:25:02.6098662-03:00",
+    "finishedAt":  "2026-08-22T14:25:07.7735850-03:00",
     "java":  "PASS_EXISTING_SUREFIRE_EVIDENCE",
-    "javaTestsVerified":  4,
+    "javaTestsVerified":  10,
     "javaFailuresVerified":  0,
     "codeComments":  "PASS",
     "probableSecrets":  "PASS",

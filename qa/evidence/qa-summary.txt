@@ -4,16 +4,16 @@ Name  : project
 Value : HospitalCore Management
 
 Name  : startedAt
-Value : 2026-08-19T13:53:21.6383820-03:00
+Value : 2026-08-22T14:25:02.6098662-03:00
 
 Name  : finishedAt
-Value : 2026-08-19T13:53:27.6561027-03:00
+Value : 2026-08-22T14:25:07.7735850-03:00
 
 Name  : java
 Value : PASS_EXISTING_SUREFIRE_EVIDENCE
 
 Name  : javaTestsVerified
-Value : 4
+Value : 10
 
 Name  : javaFailuresVerified
 Value : 0
