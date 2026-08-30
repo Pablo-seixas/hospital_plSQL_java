@@ -196,11 +196,20 @@ select a.unit_id, trunc(i.issued_at, 'MM') competence,
 create materialized view mv_mc_executive_kpi
 build immediate refresh complete on demand as
 select u.unit_id, u.code unit_code,
-       (select count(*) from mc_admission a where a.unit_id = u.unit_id and a.status = 'ACTIVE') active_admissions,
-       (select count(*) from mc_bed b where b.unit_id = u.unit_id and b.status = 'AVAILABLE') available_beds,
-       (select nvl(sum(open_amount),0) from mc_financial_title f where f.unit_id = u.unit_id and f.title_type = 'RECEIVABLE' and f.status in ('OPEN','PARTIAL')) receivables,
-       (select nvl(sum(open_amount),0) from mc_financial_title f where f.unit_id = u.unit_id and f.title_type = 'PAYABLE' and f.status in ('OPEN','PARTIAL')) payables
-  from mc_business_unit u where u.active = 'Y';
+       nvl(a.active_admissions, 0) active_admissions,
+       nvl(b.available_beds, 0) available_beds,
+       nvl(f.receivables, 0) receivables,
+       nvl(f.payables, 0) payables
+  from mc_business_unit u
+  left join (select unit_id, count(*) active_admissions from mc_admission where status = 'ACTIVE' group by unit_id) a on a.unit_id = u.unit_id
+  left join (select unit_id, count(*) available_beds from mc_bed where status = 'AVAILABLE' group by unit_id) b on b.unit_id = u.unit_id
+  left join (select unit_id,
+                    sum(case when title_type = 'RECEIVABLE' then open_amount else 0 end) receivables,
+                    sum(case when title_type = 'PAYABLE' then open_amount else 0 end) payables
+               from mc_financial_title
+              where status in ('OPEN','PARTIAL')
+              group by unit_id) f on f.unit_id = u.unit_id
+ where u.active = 'Y';
 
 begin
     dbms_scheduler.create_job(
@@ -216,4 +225,3 @@ exception
         if sqlcode <> -27477 then raise; end if;
 end;
 /
-

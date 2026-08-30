@@ -6,8 +6,8 @@ select object_type, object_name, status from user_objects where status = 'INVALI
 select name, type, line, position, text from user_errors order by name, sequence;
 @database/tests/accounting_invariants.sql
 @database/tests/inventory_invariants.sql
+@database/tests/financial_and_mv_invariants.sql
 @qa/sql/smoke_integrity.sql
 @qa/sql/performance_plans.sql
 spool off
 exit success
-

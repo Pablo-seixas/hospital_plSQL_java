@@ -1,272 +1,282 @@
 # HospitalCore Management
 
-HospitalCore Management e uma plataforma ficticia de gestao hospitalar criada para demonstrar uma arquitetura corporativa com Java 21, Spring Boot e Oracle PL/SQL.
+Sistema de gestão hospitalar desenvolvido para demonstrar como eu organizo regras de negócio críticas com Java, Spring Boot, Oracle e PL/SQL.
 
-O projeto cobre internacao, leitos, estoque, financeiro, contabilidade, faturamento, auditoria, integracao e indicadores gerenciais. As regras transacionais criticas ficam no Oracle e a API Java controla acesso, validacao, contratos HTTP e traducao segura de erros.
+Neste projeto, eu não deixei o banco apenas como armazenamento. As regras que exigem consistência forte ficam próximas dos dados, protegidas por packages, constraints, locks, idempotência e auditoria. A API Java organiza os casos de uso, controla o acesso e apresenta contratos HTTP seguros.
 
-## Objetivo do projeto
+## Visão geral
 
-O sistema representa problemas comuns de um hospital:
+O HospitalCore Management cobre cenários que fazem parte da rotina de uma operação hospitalar:
 
-- transferir pacientes entre leitos sem gerar ocupacao duplicada
-- consumir estoque pelo criterio FEFO
-- impedir saldo negativo de produtos
-- criar e liquidar titulos financeiros com idempotencia
-- garantir partidas dobradas na contabilidade
-- fechar contas hospitalares e gerar faturamento
-- registrar auditoria junto com a transacao de negocio
-- processar integracoes contabilmente rastreaveis
-- apresentar indicadores executivos e alertas gerenciais
+- internação e transferência de leitos
+- controle de estoque por FEFO
+- reservas e movimentações de produtos
+- contas a pagar e a receber
+- liquidação, cancelamento e estorno financeiro
+- contabilidade por partidas dobradas
+- faturamento, glosas e recursos
+- integração financeiro-contábil
+- auditoria transacional
+- indicadores executivos e materialized views
 
-## Stack
+Meu objetivo foi construir um projeto que pudesse ser explicado com clareza em uma entrevista, mas que também demonstrasse decisões técnicas aplicáveis a sistemas corporativos reais.
 
-- Java 21 e Spring Boot 3.4
-- Spring Web MVC, Security, JDBC, Data JPA e Bean Validation
-- Oracle Database Free 23, PL/SQL e Flyway
-- Maven, JUnit 5 e Mockito
+## Tecnologias
+
+- Java 21
+- Spring Boot 3.4
+- Spring Web MVC
+- Spring Security
+- Spring JDBC e Spring Data JPA
+- Oracle Database Free 23
+- PL/SQL
+- Flyway
+- Maven
+- JUnit 5 e Mockito
 - OpenAPI e Swagger UI
-- React, Vite e ECharts
 - Docker Compose
 
 ## Arquitetura
 
-O backend e um monolito modular. Cada area de negocio pode evoluir com baixo acoplamento, mas continua compartilhando transacoes fortes e o mesmo banco Oracle.
+O backend segue o modelo de monólito modular. Os módulos compartilham o mesmo banco e as mesmas transações, mas cada área possui responsabilidades bem definidas.
 
 ```text
 Cliente
   |
-  v
 Controller REST
   |
-  v
-Porta de aplicacao
+Porta de aplicação
   |
-  v
-Adapter JDBC ou Oracle
+Adapter de infraestrutura
   |
-  v
-Package PL/SQL, tabelas e views
+Package PL/SQL, tabela, view ou materialized view
 ```
 
-As principais responsabilidades sao:
+Organização principal:
 
-- `api`: endpoints, status HTTP, validacao e autorizacao
-- `application`: comandos, consultas, portas e modelos de resposta
-- `infrastructure`: JDBC, SimpleJdbcCall e acesso ao Oracle
-- `shared`: erros de dominio e tratamento global de excecoes
-- `db/migration`: schema, packages, views, indices e dados sinteticos
+- `api`: endpoints, validação, autorização e respostas HTTP
+- `application`: comandos, consultas e contratos de aplicação
+- `infrastructure`: JDBC, chamadas Oracle e tradução de erros
+- `shared`: tratamento de exceções e componentes comuns
+- `db/migration`: schema, packages, views, índices e dados sintéticos
 
-O Oracle protege invariantes que devem valer para qualquer canal de entrada. O Java organiza os casos de uso e transforma falhas Oracle em respostas seguras.
+Escolhi um monólito modular porque os domínios ainda dependem de transações fortes e do mesmo Oracle. Criar microserviços neste cenário acrescentaria comunicação distribuída e consistência eventual sem uma necessidade comprovada.
 
-## Virtual Threads
+## Por que usei PL/SQL
 
-O projeto usa Java 21 e habilita Virtual Threads pelo Spring Boot:
+Algumas regras precisam continuar válidas mesmo quando outro sistema acessa o banco sem passar pela API Java.
 
-```yaml
-spring:
-  threads:
-    virtual:
-      enabled: true
-```
+Por isso, o Oracle é responsável por operações como:
 
-Isso permite que requisicoes bloqueantes, como chamadas JDBC, usem threads virtuais. Elas sao mais leves que threads tradicionais e ajudam o servidor a manter muitas requisicoes concorrentes.
+- bloquear um título antes de alterar seu saldo
+- impedir duas ocupações ativas no mesmo leito
+- consumir primeiro o lote com vencimento mais próximo
+- rejeitar lançamentos contábeis desequilibrados
+- impedir operações financeiras em competência fechada
+- garantir idempotência em títulos, liquidações e integrações
+- registrar auditoria na mesma transação da operação
 
-Virtual Threads nao aumentam a capacidade do banco. O pool Hikari continua limitado a 20 conexoes para proteger o Oracle. Na entrevista, a resposta importante e: Virtual Threads melhoram a escalabilidade do lado Java para tarefas bloqueantes, mas o pool de conexoes e o banco continuam sendo recursos limitados.
+O Java continua responsável por coordenar os casos de uso, validar os contratos HTTP, aplicar segurança e traduzir os erros Oracle sem expor detalhes internos.
 
-## CQRS na parte financeira
+## Núcleo financeiro
 
-CQRS separa operacoes que alteram estado das operacoes de leitura.
+O package `PKG_FINANCIAL` concentra o ciclo de vida financeiro.
 
-No modulo financeiro:
+Ele oferece:
 
-- `FinancialCommandHandler` representa o lado de comando
-- `OracleFinancialOperations` executa a liquidacao pela procedure `PKG_FINANCIAL.SETTLE_TITLE`
-- `FinancialQueryService` representa o lado de consulta
-- `JdbcFinancialQueryService` le tabelas e views otimizadas para consulta
-- `FinancialTitleView` e `FinancialAgingView` sao modelos exclusivos de leitura
+- criação idempotente de títulos
+- detecção de chave idempotente com payload diferente
+- liquidação parcial e total
+- juros, multa e desconto validados
+- cancelamento de títulos abertos
+- estorno de liquidações
+- bloqueio pessimista com timeout
+- validação de competência contábil aberta
+- auditoria das alterações
+
+Exemplo do fluxo de liquidação:
 
 ```text
-POST settlement -> FinancialCommandHandler -> PKG_FINANCIAL.SETTLE_TITLE
-
-GET title ------> FinancialQueryService ---> MC_FINANCIAL_TITLE
-GET aging ------> FinancialQueryService ---> VW_MC_FINANCIAL_AGING
+POST /settlements
+  |
+FinancialCommandHandler
+  |
+OracleFinancialOperations
+  |
+PKG_FINANCIAL.SETTLE_TITLE
+  |
+Lock do título, validações, liquidação e auditoria
 ```
 
-O projeto usa CQRS no nivel de codigo e responsabilidade. Ele nao usa bancos separados nem consistencia eventual, porque o contexto atual precisa de consistencia forte e nao justifica essa complexidade.
+As consultas financeiras seguem uma separação no estilo CQRS. Os comandos passam pelas procedures e as leituras usam tabelas e views preparadas para consulta, como `VW_MC_FINANCIAL_AGING`.
 
-## Modulos de negocio
+## Contabilidade
 
-### Internacao
+O package `PKG_ACCOUNTING` protege as partidas dobradas.
 
-`PKG_ADMISSION.TRANSFER_BED` bloqueia a internacao e os leitos envolvidos, confere o leito esperado, encerra a ocupacao anterior, cria a nova ocupacao e registra auditoria.
+Antes de postar um lote, ele confere:
 
-### Estoque
+- situação do lote
+- situação da competência
+- total de débitos
+- total de créditos
+- existência de valor contábil
 
-`PKG_INVENTORY.ISSUE_FEFO` escolhe primeiro os lotes que vencem antes. `FOR UPDATE SKIP LOCKED` permite processamento concorrente sem duas operacoes consumirem o mesmo saldo bloqueado.
+Uma competência não pode ser encerrada enquanto houver lotes em rascunho. Os saldos consideram somente lotes efetivamente postados.
 
-### Financeiro
+## Materialized view e indicadores
 
-`PKG_FINANCIAL` cria titulos e realiza liquidacoes parciais ou totais. Chaves de idempotencia evitam que uma repeticao de requisicao gere pagamento duplicado. O titulo e bloqueado durante a liquidacao.
+A `MV_MC_EXECUTIVE_KPI` consolida por unidade:
 
-### Contabilidade
+- internações ativas
+- leitos disponíveis
+- valores a receber
+- valores a pagar
 
-`PKG_ACCOUNTING` valida debitos e creditos antes da postagem. Um lote so pode ser postado se estiver balanceado. O fechamento de periodo recusa estados inconsistentes.
+O refresh não é mais uma chamada isolada. O package `PKG_REPORTING` executa a atualização e registra cada tentativa em `MC_ANALYTICS_REFRESH_LOG`.
 
-### Faturamento
+A view `VW_MC_ANALYTICS_REFRESH_STATUS` permite consultar:
 
-`PKG_BILLING` fecha contas hospitalares, processa lotes de faturas e registra glosas. As tabelas mantem itens cobraveis, faturas, glosas e recursos.
+- data de início e término
+- resultado do refresh
+- responsável pela execução
+- mensagem de erro controlada
+- quantidade de linhas atualizadas
 
-### Integracao
+O job `JOB_MC_REFRESH_ANALYTICS` fica agendado no Oracle e chama o package de relatório. Assim, o processo fica centralizado, rastreável e testável.
 
-`PKG_INTEGRATION` mantem uma fila contabil com idempotencia, tentativas e estado de processamento. Itens podem ser processados em lote ou reenviados depois de uma falha.
+## Concorrência e consistência
 
-### Auditoria e analytics
+O projeto usa estratégias diferentes conforme o tipo de disputa:
 
-Eventos de auditoria sao gravados na mesma transacao do negocio. Views e uma materialized view fornecem ocupacao, aging financeiro, balanco, faturamento e KPIs executivos.
-
-## Concorrencia e consistencia
-
-- lock pessimista para recursos disputados, como leitos e titulos
+- `SELECT FOR UPDATE` para títulos, internações e recursos exclusivos
+- `WAIT` com tradução de timeout para erro de domínio
 - `SKIP LOCKED` para filas e consumo concorrente de estoque
-- idempotencia para impedir efeitos duplicados
-- constraints para proteger regras mesmo fora da API Java
+- constraints para proteger invariantes fora da aplicação
+- chaves únicas para idempotência
+- versionamento de registros críticos
 
-Os packages PL/SQL nao executam `COMMIT`. Assim, a fronteira transacional continua sob controle da aplicacao. Savepoints internos podem desfazer trabalho parcial sem quebrar essa responsabilidade.
+Os packages de negócio não executam `COMMIT`. A transação continua sob controle da aplicação. A exceção é o registro técnico do refresh da materialized view, que utiliza transação autônoma para preservar a evidência de sucesso ou falha.
 
-## Seguranca
+## Segurança
 
-Todas as rotas de negocio exigem autenticacao. A autorizacao usa permissoes especificas:
+As rotas de negócio exigem autenticação e permissões específicas.
+
+Principais permissões:
 
 - `admission.transfer`
 - `financial.view`
 - `financial.settle`
 - `reports.view`
 
-Existem usuarios em memoria apenas para desenvolvimento. Senhas sao recebidas por variaveis de ambiente. Em producao, a evolucao recomendada e integrar OIDC ou JWT e persistir RBAC.
+O ambiente de desenvolvimento utiliza usuários em memória. Para produção, a evolução planejada é OIDC ou JWT com RBAC persistente.
 
-Erros internos do Oracle nao sao enviados diretamente ao cliente. `OracleErrorTranslator` converte codigos conhecidos em erros de dominio e `GlobalExceptionHandler` padroniza a resposta HTTP.
+Os códigos Oracle conhecidos são convertidos em erros de domínio. SQL, nomes internos e dados sensíveis não são devolvidos diretamente ao cliente.
 
-## Endpoints implementados
+## Endpoints disponíveis
 
-| Metodo | Endpoint | Permissao | Funcao |
-|---|---|---|---|
-| POST | `/api/v1/admissions/{id}/bed-transfers` | `admission.transfer` | Transfere o leito da internacao |
-| POST | `/api/v1/financial/titles/{id}/settlements` | `financial.settle` | Liquida um titulo |
-| GET | `/api/v1/financial/titles/{id}` | `financial.view` | Consulta um titulo |
-| GET | `/api/v1/financial/titles/aging/{unitId}` | `financial.view` | Consulta aging da unidade |
-| GET | `/api/v1/analytics/executive` | `reports.view` | Consulta KPIs executivos |
+| Método | Endpoint | Responsabilidade |
+|---|---|---|
+| POST | `/api/v1/admissions/{id}/bed-transfers` | Transferir paciente entre leitos |
+| POST | `/api/v1/financial/titles/{id}/settlements` | Liquidar título financeiro |
+| GET | `/api/v1/financial/titles/{id}` | Consultar título financeiro |
+| GET | `/api/v1/financial/titles/aging/{unitId}` | Consultar aging da unidade |
+| GET | `/api/v1/analytics/executive` | Consultar indicadores executivos |
 
 ## Como executar
 
-### Pre requisitos
+Pré-requisitos:
 
 - JDK 21
 - Maven 3.9 ou superior
-- Docker Desktop para subir o Oracle local
-- Node.js para executar o frontend
+- Docker Desktop
 
-Crie `.env` baseado em `.env.example`, ajuste as senhas e execute:
+Crie o arquivo `.env` com base em `.env.example` e ajuste a conexão local.
 
 ```powershell
 docker compose up -d
 mvn -Poracle spring-boot:run
 ```
 
-Recursos locais:
+Recursos da aplicação:
 
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - Health check: `http://localhost:8080/actuator/health`
 
-Para executar o frontend:
+## Testes
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-## Testes e evidencias
+Testes Java:
 
 ```powershell
 mvn test
-.\qa\run-qa.ps1
 ```
 
-Com Oracle disponivel:
+Suíte SQL no Oracle:
 
 ```powershell
 sql usuario/senha@localhost:1521/FREEPDB1 @qa/sql/run_all.sql
 ```
 
-Os dados usados nos testes Java sao mocks e fixtures sinteticas. Eles servem como evidencia de comportamento da API e nao sao inseridos no banco real. A migration `V4__synthetic_seed.sql` tambem usa somente dados ficticios para demonstracao.
+Os testes PL/SQL cobrem:
 
-As evidencias ficam em:
+- rejeição de lote contábil desequilibrado
+- prevenção de estoque negativo
+- liquidação parcial e total
+- duplicidade financeira
+- divergência de payload idempotente
+- competência fechada
+- estorno de liquidação
+- refresh e rastreabilidade da materialized view
+- integridade geral do schema
+- planos de execução dos principais relatórios
 
-- `src/test`: testes automatizados Java
-- `database/tests`: invariantes de estoque e contabilidade
-- `qa/sql`: smoke tests e planos de execucao
-- `qa/evidence`: resultados gerados pela rotina de QA
-- `qa/TRACEABILITY_MATRIX.md`: ligacao entre requisito, codigo e teste
-- `qa/QA_FINAL_REPORT.md`: resumo de qualidade
+## Evidências verificadas
+
+A validação mais recente foi executada em Oracle Database Free 23 dentro de container Docker.
+
+| Verificação | Resultado |
+|---|---|
+| Migrations aplicadas do zero | 7 aprovadas |
+| Objetos Oracle criados | 178 |
+| Objetos inválidos | 0 |
+| Invariantes contábeis | Aprovadas |
+| Invariantes de estoque | Aprovadas |
+| Ciclo financeiro e estorno | Aprovados |
+| Refresh da materialized view | Aprovado |
+| Scheduler de analytics | Ativo e agendado |
+| Planos com índices principais | Confirmados |
 
 ## Migrations
 
-- `V1__core_schema.sql`: estrutura hospitalar, estoque, contabilidade e financeiro
-- `V2__corporate_packages.sql`: packages transacionais principais
-- `V3__billing_integration_reporting.sql`: faturamento, relatorios e KPIs
-- `V4__synthetic_seed.sql`: dados ficticios de demonstracao
-- `V5__enterprise_flows.sql`: partes, contas bancarias, reservas e integracao contabil
-- `V6__management_analytics.sql`: indicadores e alertas gerenciais
+- `V1`: schema hospitalar, estoque, financeiro e contabilidade
+- `V2`: packages transacionais principais
+- `V3`: faturamento, relatórios e materialized view
+- `V4`: dados sintéticos para demonstração
+- `V5`: reservas e integração contábil
+- `V6`: indicadores e alertas gerenciais
+- `V7`: controles financeiros, estornos e refresh rastreável da materialized view
 
-## Como apresentar na entrevista
+## Como eu apresentaria este projeto
 
-Uma explicacao curta pode ser:
+Eu desenvolvi este sistema para mostrar como separo responsabilidades entre Java e Oracle. Mantive no PL/SQL as regras que precisam de consistência forte, como transferência de leitos, estoque FEFO, partidas dobradas e liquidação financeira. No Java, organizei a API, a segurança e os contratos de aplicação. Também implementei idempotência, controle de concorrência, auditoria e indicadores executivos com materialized view.
 
-> Eu desenvolvi um monolito modular para gestao hospitalar usando Java 21, Spring Boot e Oracle. Mantive no PL/SQL as regras que exigem consistencia forte, como transferencia de leitos, baixa FEFO e liquidacao financeira. No Java, separei API, aplicacao e infraestrutura, usei seguranca por permissao e traduzi erros Oracle sem vazar detalhes internos. Na parte financeira apliquei CQRS, separando o comando de liquidacao das consultas de titulo e aging. Tambem habilitei Virtual Threads para lidar melhor com chamadas JDBC bloqueantes, mantendo o pool de conexoes limitado para proteger o banco.
+O ponto mais importante não é apenas a quantidade de funcionalidades. É a forma como cada regra foi colocada na camada que melhor consegue protegê-la.
 
-### Por que PL/SQL e nao somente Java?
+## Próximas evoluções
 
-Porque as invariantes criticas precisam continuar validas mesmo se outro sistema acessar o mesmo Oracle. Locks, constraints e transacoes perto dos dados reduzem janelas de concorrencia.
+- autenticação OIDC ou JWT com RBAC persistente
+- testes de concorrência coordenados em múltiplas sessões
+- pipeline de integração com Oracle dedicado
+- métricas, traces e correlação de requisições
+- gestão de segredos em cofre corporativo
+- paginação e filtros adicionais nas consultas
 
-### Por que um monolito modular?
+## Documentação
 
-Os dominios ainda compartilham banco e transacoes fortes. Microservicos adicionariam rede, consistencia eventual e operacao distribuida sem uma necessidade comprovada. Os limites modulares permitem extracao futura.
-
-### O que CQRS resolveu?
-
-Separou o modelo de escrita, que possui regra transacional e auditoria, do modelo de leitura, que retorna dados prontos para a interface. Isso reduz acoplamento e permite otimizar cada lado independentemente.
-
-### Virtual Threads substituem o pool JDBC?
-
-Nao. Elas tornam a espera bloqueante mais barata no Java, mas cada operacao JDBC ainda precisa de uma conexao. O Hikari limita a concorrencia real contra o Oracle.
-
-### Como o sistema evita duplicidade financeira?
-
-Cada liquidacao recebe uma chave de idempotencia protegida por constraint unica. Se o cliente repetir a mesma requisicao, o banco impede um segundo efeito financeiro.
-
-### Como o sistema evita corrida entre duas liquidacoes?
-
-A procedure bloqueia o titulo com `SELECT FOR UPDATE`. Apenas uma transacao altera o saldo aberto por vez.
-
-### Como os erros sao tratados?
-
-O Oracle usa faixas de codigos por dominio. O adapter converte essas falhas em excecoes de negocio e o handler global produz uma resposta HTTP segura e consistente.
-
-### O que voce melhoraria para producao?
-
-- autenticacao OIDC ou JWT com RBAC persistente
-- testes de integracao executados em Oracle no pipeline
-- observabilidade com metricas, traces e correlation ID
-- secrets em um cofre corporativo
-- paginacao e filtros adicionais nas consultas
-- teste de carga para ajustar Hikari e limites do Oracle
-
-## Limitacoes conhecidas
-
-- os testes Java usam mocks e nao substituem testes reais das procedures
-- as migrations precisam ser validadas em uma instancia Oracle antes de release
-- a autenticacao em memoria existe somente para desenvolvimento
-- Virtual Threads melhoram concorrencia no Java, mas nao removem limites do banco
+- `docs/ARCHITECTURE.md`: decisões de arquitetura
+- `docs/PLSQL.md`: catálogo das rotinas PL/SQL
+- `qa/TRACEABILITY_MATRIX.md`: rastreabilidade entre requisitos e testes
+- `RELATORIO_ENTREGA.md`: relatório técnico da entrega validada
 
 ## Estrutura principal
 
@@ -274,7 +284,6 @@ O Oracle usa faixas de codigos por dominio. O adapter converte essas falhas em e
 hospital-java/
 |-- database/tests
 |-- docs
-|-- frontend
 |-- qa
 |-- src/main/java/com/medcore
 |   |-- admission

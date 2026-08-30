@@ -120,6 +120,8 @@ create or replace package body pkg_integration as
         v_period_id number;
         v_batch_id number;
         v_count number := 0;
+        v_error_code varchar2(40);
+        v_error_message varchar2(500);
     begin
         p_processed := 0;
         p_failed := 0;
@@ -139,8 +141,10 @@ create or replace package body pkg_integration as
                 p_processed := p_processed + 1;
             exception
                 when others then
+                    v_error_code := to_char(sqlcode);
+                    v_error_message := substr(sqlerrm, 1, 500);
                     rollback to before_integration_item;
-                    update mc_accounting_integration set status = 'ERROR', retry_count = retry_count + 1, last_error_code = to_char(sqlcode), last_error_message = substr(sqlerrm, 1, 500) where integration_id = r.integration_id;
+                    update mc_accounting_integration set status = 'ERROR', retry_count = retry_count + 1, last_error_code = v_error_code, last_error_message = v_error_message where integration_id = r.integration_id;
                     p_failed := p_failed + 1;
             end;
             v_count := v_count + 1;
@@ -206,4 +210,3 @@ select i.integration_id, i.source_type, i.source_id, i.event_type, i.status inte
   left join mc_journal_batch b on b.batch_id = i.batch_id
   left join mc_journal_entry e on e.batch_id = b.batch_id
  group by i.integration_id, i.source_type, i.source_id, i.event_type, i.status, i.event_amount, i.created_at, i.processed_at, b.batch_id, b.status;
-

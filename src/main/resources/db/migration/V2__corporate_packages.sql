@@ -22,6 +22,8 @@ create or replace package body pkg_admission as
         v_current_bed_id number;
         v_status mc_admission.status%type;
         v_new_status mc_bed.status%type;
+        e_resource_busy exception;
+        pragma exception_init(e_resource_busy, -54);
     begin
         select current_bed_id, status into v_current_bed_id, v_status from mc_admission where admission_id = p_admission_id for update wait 5;
         if v_status <> 'ACTIVE' then raise_application_error(-20101, 'ADMISSION_NOT_ACTIVE'); end if;
@@ -39,7 +41,7 @@ create or replace package body pkg_admission as
         pkg_audit.record_event(p_actor, 'BED_TRANSFERRED', 'ADMISSION', to_char(p_admission_id), p_correlation_id,
             json_object('bedId' value v_current_bed_id), json_object('bedId' value p_new_bed_id));
     exception
-        when resource_busy then raise_application_error(-20104, 'BED_LOCK_TIMEOUT');
+        when e_resource_busy then raise_application_error(-20104, 'BED_LOCK_TIMEOUT');
     end;
 end pkg_admission;
 /

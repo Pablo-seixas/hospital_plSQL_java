@@ -74,8 +74,9 @@ create table mc_inventory_lot (
     lot_code varchar2(60) not null,
     expires_on date,
     quantity number(18,4) default 0 not null check (quantity >= 0),
-    reserved_quantity number(18,4) default 0 not null check (reserved_quantity >= 0 and reserved_quantity <= quantity),
+    reserved_quantity number(18,4) default 0 not null,
     record_version number(10) default 0 not null,
+    constraint ck_mc_inventory_lot_reserved check (reserved_quantity >= 0 and reserved_quantity <= quantity),
     constraint uk_mc_inventory_lot unique (product_id, unit_id, lot_code)
 );
 
@@ -244,4 +245,3 @@ select a.code account_code, a.name account_name, trunc(e.entry_date, 'MM') compe
   join mc_journal_batch b on b.batch_id = e.batch_id and b.status = 'POSTED'
   join mc_account a on a.account_id = e.account_id
  group by a.code, a.name, trunc(e.entry_date, 'MM');
-
