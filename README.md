@@ -31,7 +31,7 @@ Meu objetivo foi construir um projeto que pudesse ser explicado com clareza em u
 - Oracle Database Free 23
 - PL/SQL
 - Flyway
-- Maven
+- Maven 
 - JUnit 5 e Mockito
 - OpenAPI e Swagger UI
 - Docker Compose
